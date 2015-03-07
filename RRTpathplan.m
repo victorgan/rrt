@@ -59,12 +59,17 @@ function rrt = AddNode(rrt,p,iPrev)
     rrt{end+1} = node;
 end % function
 
+function rrt = AddNodeToEnd(rrt,p)
+    rrt = AddNode(rrt,p,length(rrt));
+end % function
+
 % pathPoints    2xp double  array of points in path
 % robot         struct indicating ballradius and current point
 % param         parameters
 % p_start       2x1 double  initial configuration
 % p_end         2x1 double  end point
-function pathPoints = PlanPathRRT(robot,obst,param,p_start,p_goal)
+function [pathPoints, rrt] = PlanPathRRT(robot,obst,param,p_start,p_goal)
+    assert( all(size(p_goal) == size(p_start)), 'Dimension mismatch');
 
     global iterations
     pathPoints = [];
@@ -78,54 +83,54 @@ function pathPoints = PlanPathRRT(robot,obst,param,p_start,p_goal)
         p(1,1) = p(1,1)*10-5;
         p(2,1) = p(2,1)*15-4;
         qRand = p;
-
         robot.p = p;
-        % if obstacle collision, generate a new point
+
         isObstacleCollision = collideWithObstacle(robot,obst);
         if isObstacleCollision % skip to next iteration
-            % plotCircle(p(1,1),p(2,1),0.1,'r');
             continue
         end
 
         % Find the qNear, the closet vertex in rrt 
         [qNear, qNearIdx] = nearestVertex(qRand, rrt);
 
-        col = collideWithEdge(robot,obst,p,qNear,param.res); %check for valid edge
-        if col == 1 % skip to next iteration if not valid edge
-            % plotCircle(p(1,1),p(2,1),0.1,'r');
-            continue 
+        invalidEdge = collideWithEdge(robot,obst,p,qNear,param.res); %check for valid edge
+        if invalidEdge % skip to next iteration if not valid edge
+            continue;
         end
-
         rrt = AddNode(rrt,p,qNearIdx); % add p to T with parent qNear
 
-        dist = norm(p-p_goal);
-        %display(iter,dist,length(rrt))
-        fprintf('Nodes:   %d, Distance: %.1f, Iterations: %d/1000\n',length(rrt),dist,iter)
-    %     plotCircle(p(1,1),p(2,1),robot.ballradius,'b');
-    %     plotCircle(p(1,1),p(2,1),0.1,'b');
+        % TODO separate RRT
         plot([p(1,1);rrt{qNearIdx}.p(1,1)],[p(2,1);rrt{qNearIdx}.p(2,1)],'m','LineWidth',3);
-        if (dist < param.thresh)
-            col = collideWithEdge(robot,obst,p,p_goal,param.res); %check for valid edge
-            if col == 1 % skip to next iteration if not valid edge
-                continue 
+
+        distToGoal    = norm(p - p_goal);
+        isCloseToGoal = (distToGoal < param.thresh);
+        if isCloseToGoal
+            invalidEdge = collideWithEdge(robot, obst, p, p_goal, param.res); %check for valid edge
+            if invalidEdge % skip to next iteration if not valid edge
+                continue;
             end
-            iterations = iter
-            % add qgoal to T with parent q and exit with success
-            rrt = AddNode(rrt,p_goal,length(rrt));
-            % construct Q here:
-            i = length(rrt);
-            pathPoints(:,1) = rrt{i}.p;
-            while 1
-                i = rrt{i}.iPrev;
-                if i == 0
-                    return
-                end
-                pathPoints = [rrt{i}.p pathPoints];
-            end
+
+            rrt = AddNodeToEnd(rrt,p_goal);
+            lastNodeIdx = length(rrt);
+            pathPoints = pathFromRrt(rrt, lastNodeIdx);
+            return
         end % if
 
     end
-    iterations = iter - 1
+end % function
+
+function pathPoints = pathFromRrt(rrt, nodeNum)
+    i = nodeNum;
+    pathPoints(:,1) = rrt{i}.p;
+    while 1
+        i = rrt{i}.iPrev;
+        isStartNode = i == 0;
+        if isStartNode
+            break;
+        end
+        pathPoints = [rrt{i}.p pathPoints];
+    end
+
 end % function
 
 function [qNear, qNearIdx] = nearestVertex(point, rrt)
@@ -156,6 +161,7 @@ end % function
 % Draw a line between p1 and p2. If any point on the line collides with an
 % obstacle, return false.
 function isObstacleCollision = collideWithEdge(robot,obst,p1,p2,res)
+% TODO less parameters
 
     isObstacleCollision = 0;
     d = norm(p1 - p2);
