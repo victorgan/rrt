@@ -269,7 +269,7 @@ end % function
 % Import
 function obst = importObstacles(filename)
     % Import Obstacle Locations
-    filename ='Simple2Obst.txt';
+    filename ='Simple2obst.txt';
     delimiterIn = ' ';
     headerlinesIn = 0;
     rawdata = importdata(filename,delimiterIn,headerlinesIn);
